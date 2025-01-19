@@ -52,19 +52,7 @@
 #include <termios.h>
 #include <unistd.h>
 
-#define MAX_SESSIONS 100
-#define MAX_LINE_LENGTH 512
-
-// Define the structs
-struct tmux_session {
-    char *shortcut;
-    char *label;
-};
-
-struct tmux_session_list {
-    unsigned int count;
-    struct tmux_session *sessions;
-};
+#include "tmux-start.h"
 
 // Function to initialize the session list
 struct tmux_session_list *init_session_list(unsigned int count) {
@@ -146,6 +134,16 @@ struct tmux_session_list *getTmuxSessionList() {
     return list;
 }
 
+// Function to attach to a selected tmux session
+void attachToSession(const char *tmux_id) {
+    char command[300];
+    snprintf(command, sizeof(command), "tmux attach-session -t '%s'", tmux_id);
+    if (system(command) != 0) {
+        fprintf(stderr, "Failed to attach to session: %s\n", tmux_id);
+    }
+}
+
+
 // Function to create a new session
 void createNewSession(int ask_name) {
     char session_name[256] = {0};
@@ -185,16 +183,10 @@ void createNewSession(int ask_name) {
     } else {
         printf("Created new session: %s\n", session_name);
     }
+
+    attachToSession(session_name);
 }
 
-// Function to attach to a selected tmux session
-void attachToSession(const char *tmux_id) {
-    char command[300];
-    snprintf(command, sizeof(command), "tmux attach-session -t '%s'", tmux_id);
-    if (system(command) != 0) {
-        fprintf(stderr, "Failed to attach to session: %s\n", tmux_id);
-    }
-}
 
 // Function to display the menu with highlighting
 void displayMenu(struct tmux_session_list *session_list, int current_selection) {
