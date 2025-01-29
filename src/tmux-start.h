@@ -41,7 +41,7 @@ void restoreCanonicalMode(struct termios *old_attr);
 struct tmux_session_list *getTmuxSessionList(void);
 void attachToSession(const char *tmux_id);
 void createNewSession(int ask_name);
-void displayMenu(struct tmux_session_list *session_list, int current_selection);
+void displayMenu(struct tmux_session_list *session_list, int current_selection, const char *filter);
 void interactiveMenu(struct tmux_session_list *session_list, int ask_name);
 
 #endif // TMUX_START_H

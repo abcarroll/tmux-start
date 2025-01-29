@@ -4,46 +4,6 @@
  * (C) Copyright 2025 A.B. Carroll III <ben@hl9.net>
  *
  * Licensed under the MIT License or the BSD 2-Clause License, at your option.
- *
- * MIT License:
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- * 
- * BSD 2-Clause License:
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- * 
- * 1. Redistributions of source code must retain the above copyright notice, this
- *    list of conditions, and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- *    this list of conditions, and the following disclaimer in the documentation
- *    and/or other materials provided with the distribution.
- * 
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <stdio.h>
@@ -75,7 +35,7 @@ void free_session_list(struct tmux_session_list *list) {
 /**
  * What a mess, ... not sure of the cleaner way to do this without all the escape non-sense.
  */
-void printHeader(void) { 
+void printHeader(void) {
     printf(" _                                            _                 \n");
     printf("| |_ _ __ ___  _   ___  __  ___  ___  ___ ___(_) ___  _ __  ___ \n");
     printf("| __| '_ ` _ \\| | | \\ \\/ / / __|/ _ \\/ __/ __| |/ _ \\| '_ \\/ __|\n");
@@ -109,7 +69,7 @@ struct tmux_session_list *getTmuxSessionList() {
         return NULL;
     }
 
-    // Allocate memory for the session list
+   // Allocate memory for the session list
     struct tmux_session_list *list = malloc(sizeof(struct tmux_session_list));
     list->count = 0;
     list->sessions = malloc(MAX_SESSIONS * sizeof(struct tmux_session));
@@ -171,25 +131,41 @@ void createNewSession(int ask_name) {
         printf("\n");
     }
 
-    // Use a default name if no session name is provided
-    if (strlen(session_name) == 0) {
-        strcpy(session_name, "default_session");
-    }
-
     char command[300];
-    snprintf(command, sizeof(command), "tmux new-session -d -s '%s'", session_name);
-    if (system(command) != 0) {
-        fprintf(stderr, "Failed to create session: %s\n", session_name);
+    if (strlen(session_name) == 0) {
+        snprintf(command, sizeof(command), "tmux new-session -d");
     } else {
-        printf("Created new session: %s\n", session_name);
+        snprintf(command, sizeof(command), "tmux new-session -d -s '%s'", session_name);
     }
 
-    attachToSession(session_name);
+    if (system(command) != 0) {
+        fprintf(stderr, "Failed to create session\n");
+        return;
+    }
+
+    printf("Created new session: %s\n", session_name[0] ? session_name : "[Unnamed]");
+
+    // Retrieve the session ID of the last created session
+    FILE *fp = popen("tmux display-message -p \"#{session_id}\"", "r");
+    if (fp) {
+        char session_id[100];
+        if (fgets(session_id, sizeof(session_id), fp)) {
+            session_id[strcspn(session_id, "\n")] = '\0';  // Remove newline
+            pclose(fp);
+            attachToSession(session_id);
+            return;
+        }
+        pclose(fp);
+    }
+
+    // Fallback: If session ID retrieval failed, try attaching the best way possible
+    fprintf(stderr, "Warning: Failed to determine session ID. Attaching to last session.\n");
+    attachToSession(session_name[0] ? session_name : ".");
 }
 
 
-// Function to display the menu with highlighting
-void displayMenu(struct tmux_session_list *session_list, int current_selection) {
+
+void displayMenu(struct tmux_session_list *session_list, int current_selection, const char *filter) {
     system("clear");
     printHeader();
     printf("Select a tmux session (ESC to quit):\n");
@@ -201,7 +177,6 @@ void displayMenu(struct tmux_session_list *session_list, int current_selection) 
         } else {
             printf("   ");
         }
-
         if (i == 0) {
             printf("Create a new session\n");
         } else {
@@ -212,6 +187,10 @@ void displayMenu(struct tmux_session_list *session_list, int current_selection) 
             printf("\033[0m"); // Reset text formatting
         }
     }
+
+    if (filter) {
+        printf("\nAttach to session: %s\n", filter);
+    }
 }
 
 // Main interactive menu
@@ -220,8 +199,11 @@ void interactiveMenu(struct tmux_session_list *session_list, int ask_name) {
     struct termios old_attr;
     disableCanonicalMode(&old_attr);
 
+    char filter[256] = {0};
+    int filter_len = 0;
+
     while (1) {
-        displayMenu(session_list, current_selection);
+        displayMenu(session_list, current_selection, filter_len > 0 ? filter : NULL);
 
         char input = getchar();
         if (input == '\033') { // Arrow key prefix
@@ -246,16 +228,25 @@ void interactiveMenu(struct tmux_session_list *session_list, int ask_name) {
                 attachToSession(session_list->sessions[current_selection - 1].shortcut);
             }
             return;
-        } else if (input >= '0' && input <= '9') { // Number shortcut
-            char tmux_id[16];
-            snprintf(tmux_id, sizeof(tmux_id), "%c", input);
-            restoreCanonicalMode(&old_attr);
-            attachToSession(tmux_id);
-            return;
-        } else if (input == 27) { // ESC key
+        } else if (input == 27) {
             restoreCanonicalMode(&old_attr);
             printf("\nExiting...\n");
             return;
+        } else {
+            if (filter_len < sizeof(filter) - 1) {
+                filter[filter_len++] = input;
+                filter[filter_len] = '\0';
+
+                for (int i = 0; i < session_list->count; i++) {
+                    if (strncmp(filter, session_list->sessions[i].shortcut, filter_len) == 0) {
+                        if (strlen(session_list->sessions[i].shortcut) == filter_len) {
+                            restoreCanonicalMode(&old_attr);
+                            attachToSession(session_list->sessions[i].shortcut);
+                            return;
+                        }
+                    }
+                }
+            }
         }
     }
 }
