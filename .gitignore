@@ -1,6 +1,13 @@
 # Ignore compiled binaries
 tmux-start
 
+# Build directory (common for CMake projects)
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
 # Ignore object files and other temporary files
 *.o
 *.out
